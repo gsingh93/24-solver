@@ -1,4 +1,16 @@
+#![feature(macro_rules)]
+
+extern crate num;
+
 use std::num::pow;
+use std::num::Zero;
+use num::rational::Rational;
+use num::rational::Ratio;
+
+macro_rules! try_opt(
+    ($e:expr) => (match $e { None => return None, Some(e) => e })
+)
+
 
 // TODO: Comments
 
@@ -30,8 +42,11 @@ fn solve(goal: int, nums: &[int], ops: &[&str]) {
             }
             let ops_perm: Vec<&str> = digits.iter().map(|d| ops[*d]).collect();
             for tree in trees.iter() {
-                let (eq, res) = dfs(tree, nums_perm.as_slice(), ops_perm.as_slice());
-                if res == goal as f64 {
+                let (eq, res) = match dfs(tree, nums_perm.as_slice(), ops_perm.as_slice()) {
+                    None => continue,
+                    Some((eq, res)) => (eq, res)
+                };
+                if res == Ratio::from_integer(goal) {
                     println!("{} = {}", eq, res);
                 }
             }
@@ -49,29 +64,32 @@ fn to_base(mut n: uint, b: uint) -> Vec<uint> {
     digits
 }
 
-fn dfs(tree: &Box<Tree>, nums: &[int], ops: &[&str]) -> (String, f64) {
+fn dfs(tree: &Box<Tree>, nums: &[int], ops: &[&str]) -> Option<(String, Rational)> {
     fn helper(tree: &Box<Tree>, nums: &[int], ops: &[&str], num_leaves: &mut uint,
-              num_ops: &mut uint) -> (String, f64) {
+              num_ops: &mut uint) -> Option<(String, Rational)> {
         match tree {
             &box Node(None, None) => {
                 let res = nums[*num_leaves];
                 *num_leaves += 1;
-                (res.to_string(), res.to_f64().unwrap())
+                Some((res.to_string(), Ratio::from_integer(res)))
             },
             &box Node(Some(ref left), Some(ref right)) => {
-                let (l, l_res) = helper(left, nums, ops, num_leaves, num_ops);
-                let (r, r_res) = helper(right, nums, ops, num_leaves, num_ops);
+                let (l, l_res) = try_opt!(helper(left, nums, ops, num_leaves, num_ops));
+                let (r, r_res) = try_opt!(helper(right, nums, ops, num_leaves, num_ops));
                 let eq = format!("({} {} {})", l, ops[*num_ops], r);
                 let res = match ops[*num_ops] {
                     "+" => l_res + r_res,
                     "-" => l_res - r_res,
                     "*" => l_res * r_res,
-                    // TODO: Exact division and better default
-                    "/" => if r_res != 0.0 { l_res / r_res } else { -500.0 },
+                    "/" => if r_res.is_zero() {
+                        return None;
+                    } else {
+                        l_res / r_res
+                    },
                     op  => fail!("Unknown operation: {}", op)
                 };
                 *num_ops += 1;
-                (eq, res)
+                Some((eq, res))
             }
             &box Node(_, _) => fail!("Binary tree should be full!")
         }
