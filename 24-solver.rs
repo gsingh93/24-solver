@@ -2,17 +2,13 @@
 
 extern crate num;
 
-use std::num::pow;
-use std::num::Zero;
-use num::rational::Rational;
-use num::rational::Ratio;
+use std::num::{pow, Zero};
+use num::rational::{Ratio, Rational};
 
+// Same as try!, but for Options
 macro_rules! try_opt(
     ($e:expr) => (match $e { None => return None, Some(e) => e })
 )
-
-
-// TODO: Comments
 
 #[deriving(Clone)]
 enum Tree {
@@ -26,26 +22,53 @@ fn main() {
     solve(goal, nums.as_slice(), ops.as_slice());
 }
 
+// Print all equations which use each num from `nums` once, use only
+// the operators in `ops`, and have a result of `goal`. The algorithm
+// is as follows:
+//
+//   1. Generate all trees that have `nums.len()` leaf nodes. This
+//      corresponds to every way you can parenthesize an equation with
+//      `nums.len()` integers and `nums.len() - 1` operations.
+//   2. For each permutation of integers in `nums`, choose `nums.len() - 1`
+//      operators from `ops`. This is done by iterating over all base
+//      `ops.len()` numbers from 0 to the max `nums.len() - 1` digit number in that base.
+//   3. Perform a DFS through each of the initially generated trees, substituting each
+//      `num` for every leaf node and each of the selected `ops` for the current DFS
+//      for each every non-leaf node.
 fn solve(goal: int, nums: &[int], ops: &[&str]) {
+    // Generate all trees of that have `nums.len() - 1` leaf
+    // nodes. This represents every way to parenthesize an expression
+    // with `nums.len()` numbers and `nums.len() - 1` operators
     let trees: Vec<Box<Tree>> = gen_trees(nums.len()).move_iter().map(|t| box t).collect();
-    // TODO: Write own permutation alg to avoid vec copies
+
+    // For every permutation of the given numbers
     for nums_perm in nums.permutations() {
+        // Calculate the max `nums.len() - 1` digit number in base `ops.len()`
         let mut range_end = 0;
         for i in range(0, nums.len() - 1) {
             range_end += pow(ops.len(), i)
         }
         range_end *= nums.len() - 1;
+
         for i in range(0, range_end) {
+            // Use each digit of the current number in base
+            // `ops.len()` to select the operations to use
             let mut digits = to_base(i, ops.len());
             while digits.len() < nums.len() - 1 {
                 digits.push(0);
             }
             let ops_perm: Vec<&str> = digits.iter().map(|d| ops[*d]).collect();
+
+            // DFS through each tree (which is a parenthesized
+            // expression), replacing leaf nodes with numbers and
+            // non-leaf nodes with operations. Print the result if equals the goal
             for tree in trees.iter() {
                 let (eq, res) = match dfs(tree, nums_perm.as_slice(), ops_perm.as_slice()) {
                     None => continue,
                     Some((eq, res)) => (eq, res)
                 };
+
+                // TODO: Only print unique results
                 if res == Ratio::from_integer(goal) {
                     println!("{} = {}", eq, res);
                 }
@@ -54,6 +77,26 @@ fn solve(goal: int, nums: &[int], ops: &[&str]) {
     }
 }
 
+// Returns a vector of all unique full binary trees with `size` leaf nodes
+fn gen_trees(size: uint) -> Vec<Tree> {
+    let mut dp = Vec::new();
+    dp.push(vec!(Node(None, None)));
+    for i in range(1, size) {
+        let mut v = Vec::new();
+        for j in range(0, i) {
+            for left in dp[j].iter() {
+                for right in dp[i - j - 1].iter() {
+                    v.push(Node(Some(box left.clone()), Some(box right.clone())));
+                }
+            }
+        }
+        dp.push(v);
+    }
+
+    dp.pop().unwrap()
+}
+
+// Converts `n` from base 10 to base `b` and returns a vector of the digits
 fn to_base(mut n: uint, b: uint) -> Vec<uint> {
     let mut digits = Vec::new();
     while n > 0 {
@@ -64,6 +107,12 @@ fn to_base(mut n: uint, b: uint) -> Vec<uint> {
     digits
 }
 
+// Perform a depth first search on `tree`, replacing each leaf node
+// with a number from `nums`, and each non-leaf node with an operation
+// from `ops`. Returns None if there is no resultant equation due to a
+// divide by zero, otherwise returns an Option containing a tuple of
+// the equation as a String, and the result of the equation as a
+// Rational
 fn dfs(tree: &Box<Tree>, nums: &[int], ops: &[&str]) -> Option<(String, Rational)> {
     fn helper(tree: &Box<Tree>, nums: &[int], ops: &[&str], num_leaves: &mut uint,
               num_ops: &mut uint) -> Option<(String, Rational)> {
@@ -96,22 +145,4 @@ fn dfs(tree: &Box<Tree>, nums: &[int], ops: &[&str]) -> Option<(String, Rational
     }
 
     helper(tree, nums, ops, &mut 0, &mut 0)
-}
-
-fn gen_trees(size: uint) -> Vec<Tree> {
-    let mut dp = Vec::new();
-    dp.push(vec!(Node(None, None)));
-    for i in range(1, size) {
-        let mut v = Vec::new();
-        for j in range(0, i) {
-            for left in dp[j].iter() {
-                for right in dp[i - j - 1].iter() {
-                    v.push(Node(Some(box left.clone()), Some(box right.clone())));
-                }
-            }
-        }
-        dp.push(v);
-    }
-
-    dp.pop().unwrap()
 }
